@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	mrand "math/rand"
 	"os"
@@ -27,7 +28,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const ProtocolID = "/i360/1.0.0"
+const TopicID = "/i360/1.0.0"
 
 type Node struct {
 	Host       host.Host
@@ -35,16 +36,6 @@ type Node struct {
 	PubSub     *pubsub.PubSub
 	MastersCtm *Consortium
 	WorkersCtm *Consortium
-}
-
-type Consortium struct {
-	ctx          context.Context
-	selfId       peer.ID
-	topic        *pubsub.Topic
-	subscription *pubsub.Subscription
-	Ps           *pubsub.PubSub
-	Messages     chan *Message
-	Headers      []string
 }
 
 type Message struct {
@@ -151,7 +142,7 @@ func Run() {
 
 	p2pNode, err := New(ctx, cfg)
 	if err != nil {
-
+		log.Fatalln(fmt.Errorf("New: %w", err))
 	}
 
 	log.Println("##################################################################")
@@ -163,7 +154,14 @@ func Run() {
 	log.Println("##################################################################")
 
 	go AdvertiseSelf(ctx, p2pNode, cfg)
-	go ConnectToPeers(ctx, p2pNode, cfg)
+	go p2pNode.ConnectToPeer(ctx, cfg)
+
+	p2pNode.WorkersCtm, err = p2pNode.JoinConsortium(ctx)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("JoinConsortium: %w", err))
+	}
+
+	go PeriodicBroadcast(p2pNode, "i am message from:")
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
@@ -176,27 +174,14 @@ func Run() {
 	}
 }
 
-func AdvertiseSelf(ctx context.Context, n *Node, cfg config.Config) {
-
-	routingDsc := routingDiscovery.NewRoutingDiscovery(n.KadDHT)
-
-	// We use a rendezvous point "meet me here" to announce our location.
-	// This is like telling your friends to meet you at the Eiffel Tower.
-	for {
-		log.Println("Announcing self...")
-		dutil.Advertise(ctx, routingDsc, cfg.Rendezvous)
-		time.Sleep(20 * time.Second)
-	}
-}
-
-func ConnectToPeers(ctx context.Context, n *Node, cfg config.Config) {
+func (n *Node) ConnectToPeer(ctx context.Context, cfg config.Config) {
 
 	routingDsc := routingDiscovery.NewRoutingDiscovery(n.KadDHT)
 
 	// Now, look for others who have announced
 	// This is like your friend telling you the location to meet you.
 	for {
-		log.Println("Searching for peerAddrInfors...")
+		log.Println("Searching for peers...")
 		peerInfos, err := routingDsc.FindPeers(ctx, cfg.Rendezvous)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -229,4 +214,97 @@ func ConnectToPeers(ctx context.Context, n *Node, cfg config.Config) {
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func (n *Node) JoinConsortium(ctx context.Context) (*Consortium, error) {
+	topic, err := n.PubSub.Join(TopicID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	sub, err := topic.Subscribe()
+	if err != nil {
+		return nil, err
+	}
+
+	consortium := &Consortium{
+		ctx:          ctx,
+		subscription: sub,
+		selfId:       n.Host.ID(),
+		topic:        topic,
+		Ps:           n.PubSub,
+		Messages:     make(chan *Message, 1024),
+		Headers:      make([]string, 0),
+	}
+
+	go n.SubscribeLoop()
+
+	return consortium, nil
+}
+
+func (n *Node) SubscribeLoop() {
+	for {
+		inboundMsg, err := n.WorkersCtm.subscription.Next(n.WorkersCtm.ctx)
+
+		if err != nil {
+			close(n.WorkersCtm.Messages)
+			return
+		}
+
+		if inboundMsg.ReceivedFrom == n.WorkersCtm.selfId {
+			continue
+		}
+
+		msg := &Message{}
+		err = json.Unmarshal(inboundMsg.Data, msg)
+		if err != nil {
+			continue
+		}
+
+		log.Infoln("Received message:", msg)
+
+		n.WorkersCtm.Messages <- msg
+	}
+}
+
+func (n *Node) Broadcast(msg string) {
+
+	message := Message{
+		Message:  msg,
+		SenderID: n.Host.ID(),
+	}
+
+	if err := n.WorkersCtm.Publish(&message); err != nil {
+		log.Println("- Error publishing to network:", err)
+	}
+}
+
+func AdvertiseSelf(ctx context.Context, n *Node, cfg config.Config) {
+
+	routingDsc := routingDiscovery.NewRoutingDiscovery(n.KadDHT)
+
+	// We use a rendezvous point "meet me here" to announce our location.
+	// This is like telling your friends to meet you at the Eiffel Tower.
+	for {
+		log.Println("Announcing self...")
+		dutil.Advertise(ctx, routingDsc, cfg.Rendezvous)
+		time.Sleep(20 * time.Second)
+	}
+}
+
+func PeriodicBroadcast(n *Node, msg string) {
+	for {
+		time.Sleep(time.Second * 15)
+		peers := n.WorkersCtm.Ps.ListPeers(TopicID)
+		if len(peers) != 0 {
+			log.Printf("- Found %d other peers in the network: %s\n", len(peers), peers)
+			log.Info("Sending message")
+			n.Broadcast(msg + "" + n.Host.ID().String())
+		} else {
+			log.Warn("- Found 0 other peers in the network: \n")
+		}
+
+	}
+
 }
