@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -32,6 +33,8 @@ func Run() {
 
 	flag.Parse()
 
+	fmt.Println("Running node as", *nodeType)
+
 	switch *nodeType {
 	case "master":
 		runner := New(*masterIP, "")
@@ -49,40 +52,51 @@ func (i *Runner) RunMaster() (string, error) {
 	curlCmd := exec.Command("curl", "https://get.k3s.io", "-sfL")
 	sudoCmd := exec.Command("sudo", "sh")
 
-	r, w := io.Pipe()
+	reader, writer := io.Pipe()
+	var buffer bytes.Buffer
 
-	curlCmd.Stdout = w
-	sudoCmd.Stdin = r
+	curlCmd.Stdout = writer
+	sudoCmd.Stdin = reader
 
-	var b2 bytes.Buffer
-	sudoCmd.Stdout = &b2
+	sudoCmd.Stdout = &buffer
 
 	err := curlCmd.Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("curlCmd.Start:", err)
 		return "", err
 	}
+
 	err = sudoCmd.Start()
 	if err != nil {
 		log.Fatal(err)
 		return "", err
 	}
+
 	err = curlCmd.Wait()
 	if err != nil {
 		log.Fatal(err)
 		return "", err
 	}
-	err = w.Close()
+
+	err = writer.Close()
 	if err != nil {
 		log.Fatal(err)
 		return "", err
 	}
+
 	err = sudoCmd.Wait()
 	if err != nil {
 		log.Fatal(err)
 		return "", err
 	}
-	wr, err := io.Copy(os.Stdout, &b2)
+
+	err = reader.Close()
+	if err != nil {
+		log.Fatal(err)
+		return "", err
+	}
+
+	wr, err := io.Copy(os.Stdout, &buffer)
 	if err != nil {
 		log.Fatal(err)
 		return "", err
@@ -90,6 +104,8 @@ func (i *Runner) RunMaster() (string, error) {
 
 	log.Println(wr)
 
+	time.Sleep(time.Second * 5)
+	
 	token, err := os.ReadFile("/var/lib/rancher/k3s/server/node-token")
 	if err != nil {
 		log.Warn(err)
