@@ -96,21 +96,20 @@ func (i *Runner) RunMaster() (string, error) {
 		return "", err
 	}
 
-	wr, err := io.Copy(os.Stdout, &buffer)
+	_, err = io.Copy(os.Stdout, &buffer)
 	if err != nil {
 		log.Fatal(err)
 		return "", err
 	}
 
-	log.Println(wr)
-
 	time.Sleep(time.Second * 5)
-	
-	token, err := os.ReadFile("/var/lib/rancher/k3s/server/node-token")
+
+	catCmd := exec.Command("/bin/sh", "-c", "sudo cat /var/lib/rancher/k3s/server/node-token")
+	token, err := catCmd.Output()
 	if err != nil {
-		log.Warn(err)
-		return "", err
+		log.Fatal(err)
 	}
+	fmt.Println("Token:", string(token))
 
 	return string(token), nil
 }
@@ -169,4 +168,13 @@ func (i *Runner) RunWorker() {
 
 	log.Println(wr)
 
+}
+
+func setTokenVariable() {
+	catCmd := exec.Command("/bin/sh", "-c", "sudo cat /var/lib/rancher/k3s/server/node-token")
+	out, err := catCmd.Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Token:", string(out))
 }
