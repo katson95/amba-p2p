@@ -1,9 +1,10 @@
 package main
 
-import (
-	"github.com/amba-p2p/internal/node"
-)
+import "github.com/amba-p2p/internal/platform/k8s"
 
 func main() {
-	node.Run()
+	//node.Run()
+
+	k8s.Run()
 }
+
