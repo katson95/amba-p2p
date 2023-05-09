@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 )
 
 type Runner struct{}
@@ -15,26 +16,28 @@ func New() *Runner {
 	return &runner
 }
 
-func (r *Runner) Update() error {
+func (r *Runner) Update() (*string, error) {
 	updateCmd := exec.Command("sudo", "apt", "update")
-	_, err := updateCmd.Output()
+	outPut, err := updateCmd.Output()
 	if err != nil {
-		return fmt.Errorf("updateCmd.Output(): %w", err)
+		return nil, fmt.Errorf("updateCmd.Output(): %w", err)
 	}
-	return nil
+	out := string(outPut)
+	return &out, nil
 }
 
-func (r *Runner) PreReqJDK() error {
+func (r *Runner) PreReqJDK() (*string, error) {
 	javaCmd := exec.Command("sudo", "apt", "install", "openjdk-8-jdk", "-y")
-	_, err := javaCmd.Output()
+	outPut, err := javaCmd.Output()
 	if err != nil {
-		return fmt.Errorf("javaCmd.Output(): %w", err)
+		return nil, fmt.Errorf("javaCmd.Output(): %w", err)
 	}
-	return nil
+	out := string(outPut)
+	return &out, nil
 }
 
-func (r *Runner) AddRepository() error {
-	repoCmd := exec.Command("echo", "\"deb http://www.apache.org/dist/cassandra/debian 40x main\"")
+func (r *Runner) AddRepository() (*string, error) {
+	repoCmd := exec.Command("echo", "deb http://www.apache.org/dist/cassandra/debian 40x main")
 	sudoCmd := exec.Command("sudo", "tee", "-a", "/etc/apt/sources.list.d/cassandra.sources.list")
 
 	reader, writer := io.Pipe()
@@ -47,42 +50,43 @@ func (r *Runner) AddRepository() error {
 
 	err := repoCmd.Start()
 	if err != nil {
-		return fmt.Errorf("repoCmd.Start(): %w", err)
+		return nil, fmt.Errorf("repoCmd.Start(): %w", err)
 	}
 
 	err = sudoCmd.Start()
 	if err != nil {
-		return fmt.Errorf("sudoCmd.Start(): %w", err)
+		return nil, fmt.Errorf("sudoCmd.Start(): %w", err)
 	}
 
 	err = repoCmd.Wait()
 	if err != nil {
-		return fmt.Errorf("repoCmd.Wait(): %w", err)
+		return nil, fmt.Errorf("repoCmd.Wait(): %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return fmt.Errorf("writer.Close(): %w", err)
+		return nil, fmt.Errorf("writer.Close(): %w", err)
 	}
 
 	err = sudoCmd.Wait()
 	if err != nil {
-		return fmt.Errorf("sudoCmd.Wait(): %w", err)
+		return nil, fmt.Errorf("sudoCmd.Wait(): %w", err)
 	}
 
 	err = reader.Close()
 	if err != nil {
-		return fmt.Errorf("reader.Close(): %w", err)
+		return nil, fmt.Errorf("reader.Close(): %w", err)
 	}
 
-	_, err = io.Copy(os.Stdout, &buffer)
+	outPut, err := io.Copy(os.Stdout, &buffer)
 	if err != nil {
-		return fmt.Errorf("io.Copy(): %w", err)
+		return nil, fmt.Errorf("io.Copy(): %w", err)
 	}
-	return nil
+	out := strconv.FormatInt(outPut, 10)
+	return &out, nil
 }
 
-func (r *Runner) AddKey() error {
+func (r *Runner) AddKey() (*string, error) {
 
 	wgetCmd := exec.Command("wget", "-q", "-O", "-", "https://www.apache.org/dist/cassandra/KEYS")
 	sudoCmd := exec.Command("sudo", "apt-key", "add", "-")
@@ -97,65 +101,69 @@ func (r *Runner) AddKey() error {
 
 	err := wgetCmd.Start()
 	if err != nil {
-		return fmt.Errorf("wgetCmd.Start(): %w", err)
+		return nil, fmt.Errorf("wgetCmd.Start(): %w", err)
 	}
 
 	err = sudoCmd.Start()
 	if err != nil {
-		return fmt.Errorf("sudoCmd.Start(): %w", err)
+		return nil, fmt.Errorf("sudoCmd.Start(): %w", err)
 	}
 
 	err = wgetCmd.Wait()
 	if err != nil {
-		return fmt.Errorf("wgetCmd.Wait(): %w", err)
+		return nil, fmt.Errorf("wgetCmd.Wait(): %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return fmt.Errorf("writer.Close(): %w", err)
+		return nil, fmt.Errorf("writer.Close(): %w", err)
 	}
 
 	err = sudoCmd.Wait()
 	if err != nil {
-		return fmt.Errorf("sudoCmd.Wait(): %w", err)
+		return nil, fmt.Errorf("sudoCmd.Wait(): %w", err)
 	}
 
 	err = reader.Close()
 	if err != nil {
-		return fmt.Errorf("sudoCmd.Wait(): %w", err)
+		return nil, fmt.Errorf("sudoCmd.Wait(): %w", err)
 	}
 
-	_, err = io.Copy(os.Stdout, &buffer)
+	outPut, err := io.Copy(os.Stdout, &buffer)
 	if err != nil {
-		return fmt.Errorf("io.Copy: %w", err)
+		return nil, fmt.Errorf("io.Copy: %w", err)
 	}
-	return nil
+	out := strconv.FormatInt(outPut, 10)
+	return &out, nil
 }
 
-func (r *Runner) Install() error {
+func (r *Runner) Install() (*string, error) {
 
 	installCmd := exec.Command("sudo", "apt", "install", "cassandra")
-	_, err := installCmd.Output()
+	outPut, err := installCmd.Output()
 	if err != nil {
-		return fmt.Errorf("installCmd.Output(): %w", err)
+		return nil, fmt.Errorf("installCmd.Output(): %w", err)
 	}
-	return nil
+	out := string(outPut)
+	return &out, nil
 }
 
-func (r *Runner) Start() error {
+func (r *Runner) Start() (*string, error) {
 	svcCmd := exec.Command("sudo", "service", "cassandra", "start")
-	_, err := svcCmd.Output()
+	outPut, err := svcCmd.Output()
 	if err != nil {
-		return fmt.Errorf("svcCmd.Output(): %w", err)
+		return nil, fmt.Errorf("svcCmd.Output(): %w", err)
 	}
-	return nil
+	out := string(outPut)
+	return &out, nil
 }
 
-func (r *Runner) Status() error {
+func (r *Runner) Status() (*string, error) {
 	toolCmd := exec.Command("sudo", "nodetool", "status")
-	_, err := toolCmd.Output()
+	outPut, err := toolCmd.Output()
 	if err != nil {
-		return fmt.Errorf("toolCmd.Output(): %w", err)
+		return nil, fmt.Errorf("toolCmd.Output(): %w", err)
 	}
-	return nil
+	out := string(outPut)
+	return &out, nil
 }
