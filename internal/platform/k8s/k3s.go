@@ -62,44 +62,37 @@ func (i *Runner) RunMaster() (string, error) {
 
 	err := curlCmd.Start()
 	if err != nil {
-		log.Fatal("curlCmd.Start:", err)
-		return "", err
+		return "", fmt.Errorf("curlCmd.Start(): %w", err)
 	}
 
 	err = sudoCmd.Start()
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("sudoCmd.Start(): %w", err)
 	}
 
 	err = curlCmd.Wait()
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("curlCmd.Wait(): %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("writer.Close(): %w", err)
 	}
 
 	err = sudoCmd.Wait()
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("sudoCmd.Wait(): %w", err)
 	}
 
 	err = reader.Close()
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("reader.Close(): %w", err)
 	}
 
 	_, err = io.Copy(os.Stdout, &buffer)
 	if err != nil {
-		log.Fatal(err)
-		return "", err
+		return "", fmt.Errorf("io.Copy: %w", err)
 	}
 
 	time.Sleep(time.Second * 5)
