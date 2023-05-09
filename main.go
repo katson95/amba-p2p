@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/amba-p2p/internal/platform/db/cassandra"
 	log "github.com/sirupsen/logrus"
@@ -20,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Installing jdk...............")
@@ -28,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Adding Repo..................")
@@ -36,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Adding Key...................")
@@ -44,7 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Installing Cassandra.........")
@@ -52,7 +53,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
+
+	fmt.Println("-----------------------------")
+	fmt.Println("Updating cassandra repo......")
+	output, err = installer.Update()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(&output)
+
+	fmt.Println("-----------------------------")
+	fmt.Println("Starting Cassandra ..........")
+	time.Sleep(time.Second * 10)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Verifying Cassandra status...")
@@ -60,5 +73,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(output)
+	fmt.Println(&output)
 }
