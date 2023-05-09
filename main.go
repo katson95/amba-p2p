@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
+	fmt.Println(*output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Installing jdk...............")
@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
+	fmt.Println(*output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Adding Repo..................")
@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
+	fmt.Println(*output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Adding Key...................")
@@ -45,15 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
-
-	fmt.Println("-----------------------------")
-	fmt.Println("Installing Cassandra.........")
-	output, err = installer.Install()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(&output)
+	fmt.Println(*output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Updating cassandra repo......")
@@ -61,7 +53,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
+	fmt.Println(*output)
+	
+	fmt.Println("-----------------------------")
+	fmt.Println("Installing Cassandra.........")
+	output, err = installer.Install()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(*output)
 
 	fmt.Println("-----------------------------")
 	fmt.Println("Starting Cassandra ..........")
@@ -73,5 +73,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(&output)
+	fmt.Println(*output)
 }
