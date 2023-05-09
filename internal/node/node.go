@@ -1,17 +1,19 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	mrand "math/rand"
+	"net/http"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	config "github.com/amba-p2p/config"
+	"github.com/amba-p2p/internal/platform/locator"
+	"github.com/amba-p2p/pkg/http/rest/client"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -26,9 +28,11 @@ import (
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/multiformats/go-multiaddr"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
-const TopicID = "/i360/1.0.0"
+const networkTopic = "/i360/1.0.0"
+const consensusTopic = "/i360/master/1.0.0"
 
 type Node struct {
 	Host       host.Host
@@ -36,11 +40,7 @@ type Node struct {
 	PubSub     *pubsub.PubSub
 	MastersCtm *Consortium
 	WorkersCtm *Consortium
-}
-
-type Message struct {
-	SenderID peer.ID `json:"sender_id"`
-	Message  string  `json:"message"`
+	Locator    *locator.Locator
 }
 
 func New(ctx context.Context, cfg config.Config) (*Node, error) {
@@ -60,14 +60,35 @@ func New(ctx context.Context, cfg config.Config) (*Node, error) {
 		return nil, err
 	}
 
+	//currentDir, _ := os.Getwd()
 	//---3. Setup Limiter config ---
-	currentDir, _ := os.Getwd()
+	viper.AddConfigPath("./internal/config")
+	viper.SetConfigName("limiterCfg") // Register config file name (no extension)
+	viper.SetConfigType("json")       // Look for specific type
+	err = viper.ReadInConfig()
+	if err != nil {
+		return nil, err
+	}
 
-	limiterCfg, err := os.Open(currentDir + "/internal/node/limiterCfg.json")
+	/*port := viper.Get("System.StreamsInbound")
+
+	fmt.Println(port)
+
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(f)
+	if err != nil {
+		log.Fatal(err)
+	}
+	limiterCfg, err := os.ReadFile("/home/limiterCfg.json")
 	if err != nil {
 		panic(err)
 	}
-	limiter, err := rcmgr.NewDefaultLimiterFromJSON(limiterCfg)
+		limiterCfg, err := os.Open(currentDir + "/internal/node/limiterCfg.json")
+		if err != nil {
+			panic(err)
+		}*/
+	limiterCfg, err := os.ReadFile("./internal/config/limiterCfg.json")
+	limiter, err := rcmgr.NewDefaultLimiterFromJSON(bytes.NewReader(limiterCfg))
 	if err != nil {
 		panic(err)
 	}
@@ -124,54 +145,20 @@ func New(ctx context.Context, cfg config.Config) (*Node, error) {
 	}
 	wg.Wait()
 
+	//---Initialize REST Client---
+	var geoLocator *locator.Locator
+
+	locatorClient := client.NewClient("https://ipinfo.io", 12000)
+	if err := locatorClient.ExecuteRequest(ctx, http.MethodGet, "", "/json", &geoLocator, nil); err != nil {
+		return nil, err
+	}
+
 	return &Node{
-		Host:   p2pHost,
-		KadDHT: kadDHT,
-		PubSub: ps,
+		Host:    p2pHost,
+		KadDHT:  kadDHT,
+		PubSub:  ps,
+		Locator: geoLocator,
 	}, nil
-}
-
-func Run() {
-
-	ctx := context.Background()
-
-	cfg, err := config.ParseFlags()
-	if err != nil {
-		log.Fatalln(fmt.Errorf("cfg.ParseFlags: %w", err))
-	}
-
-	p2pNode, err := New(ctx, cfg)
-	if err != nil {
-		log.Fatalln(fmt.Errorf("New: %w", err))
-	}
-
-	log.Println("##################################################################")
-	log.Println("I am:", p2pNode.Host.ID())
-	for _, addr := range p2pNode.Host.Addrs() {
-		fmt.Printf("%s: %s/p2p/%s", "I am @:", addr, p2pNode.Host.ID().String())
-		fmt.Println()
-	}
-	log.Println("##################################################################")
-
-	go AdvertiseSelf(ctx, p2pNode, cfg)
-	go p2pNode.ConnectToPeer(ctx, cfg)
-
-	p2pNode.WorkersCtm, err = p2pNode.JoinConsortium(ctx)
-	if err != nil {
-		log.Fatalln(fmt.Errorf("JoinConsortium: %w", err))
-	}
-
-	go PeriodicBroadcast(p2pNode, "i am message from:")
-
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	<-ch
-	log.Debugln("Received signal, shutting down...")
-
-	// shut the node down
-	if err := p2pNode.Host.Close(); err != nil {
-		panic(err)
-	}
 }
 
 func (n *Node) ConnectToPeer(ctx context.Context, cfg config.Config) {
@@ -216,8 +203,8 @@ func (n *Node) ConnectToPeer(ctx context.Context, cfg config.Config) {
 	}
 }
 
-func (n *Node) JoinConsortium(ctx context.Context) (*Consortium, error) {
-	topic, err := n.PubSub.Join(TopicID)
+func (n *Node) JoinConsortium(ctx context.Context, topicID string) (*Consortium, error) {
+	topic, err := n.PubSub.Join(topicID)
 
 	if err != nil {
 		return nil, err
@@ -264,6 +251,10 @@ func (n *Node) SubscribeLoop() {
 
 		log.Infoln("Received message:", msg)
 
+		//---1. If i am master, read network status of sender, or contact masters of sender's zone of operation---
+
+		//---2. Master in senders zone will computer federation requirements and send joining information to sender
+
 		n.WorkersCtm.Messages <- msg
 	}
 }
@@ -294,9 +285,26 @@ func AdvertiseSelf(ctx context.Context, n *Node, cfg config.Config) {
 }
 
 func PeriodicBroadcast(n *Node, msg string) {
-	for {
+
+	//--1. Fetch my network zone---
+	zone := n.Locator.Region
+	fmt.Println(zone)
+
+	//--2. Announce my location to network consortium---
+
+	//--3. Wait for response from a master already in network/masters consortium (Retry x times)
+	//--3.1 Response: my role in the cluster (including master(s) or k8s cluster i should join & joining key)
+
+	//--4. In case of a response, run k8s command to join existing cluster
+
+	//--5. In case of no response, assume the role of a master
+	//--5.1 Establish new cluster state, write state to the database
+	//--5.2 Wait/Listen for new nodes to join, broadcasting their location (zone of operation) to the network consortium
+	//--5.3 Assign role of new joiner as worker/master based on federation status i.e. the number of masters/workers
+
+	/*	for {
 		time.Sleep(time.Second * 15)
-		peers := n.WorkersCtm.Ps.ListPeers(TopicID)
+		peers := n.WorkersCtm.Ps.ListPeers(networkTopic)
 		if len(peers) != 0 {
 			log.Printf("- Found %d other peers in the network: %s\n", len(peers), peers)
 			log.Info("Sending message")
@@ -305,6 +313,6 @@ func PeriodicBroadcast(n *Node, msg string) {
 			log.Warn("- Found 0 other peers in the network: \n")
 		}
 
-	}
+	}*/
 
 }
