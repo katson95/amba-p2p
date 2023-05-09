@@ -24,8 +24,8 @@ func (r *Runner) Update() error {
 	return nil
 }
 
-func (r *Runner) PreReqJdk() error {
-	javaCmd := exec.Command("sudo", "apt", "install", "openjdk-8-jdk -y")
+func (r *Runner) PreReqJDK() error {
+	javaCmd := exec.Command("sudo", "apt", "install", "openjdk-8-jdk", "-y")
 	_, err := javaCmd.Output()
 	if err != nil {
 		return fmt.Errorf("javaCmd.Output(): %w", err)
